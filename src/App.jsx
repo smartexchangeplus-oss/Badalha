@@ -1,11 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Repeat, Search, MapPin, MessageCircle, Plus, LogOut, Send, Tag,
-  Package, Trash2, ArrowRight, Shirt, BookOpen, Gamepad2, Sofa,
+  Package, Trash2, ArrowRight, Shirt, BookOpen, Gamepad2, Sofa, Image as ImageIcon, X as XIcon,
+  Smartphone, Dumbbell, Wrench, LayoutGrid,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
 const CATEGORIES = ["إلكترونيات", "أثاث", "ملابس", "كتب", "ألعاب أطفال", "أدوات منزلية", "رياضة", "أخرى"];
+
+const CATEGORY_ICONS = {
+  "إلكترونيات": Smartphone,
+  "أثاث": Sofa,
+  "ملابس": Shirt,
+  "كتب": BookOpen,
+  "ألعاب أطفال": Gamepad2,
+  "أدوات منزلية": Wrench,
+  "رياضة": Dumbbell,
+  "أخرى": LayoutGrid,
+};
 
 const FONT_STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=Lalezar&family=Tajawal:wght@300;400;500;700;800&display=swap');
@@ -32,6 +44,10 @@ const FONT_STYLE = `
     border: 1px solid #ddd6c2; background: #FAF8F1; outline: none; font-size: 0.9rem;
   }
 `;
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
 
 function timeAgo(iso) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -155,6 +171,10 @@ export default function App() {
   const [locFilter, setLocFilter] = useState("");
   const [activeConvId, setActiveConvId] = useState(null);
   const [chatText, setChatText] = useState("");
+  const [chatImage, setChatImage] = useState(null); // ملف الصورة المختارة
+  const [chatImagePreview, setChatImagePreview] = useState(""); // رابط معاينة محلي
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef(null);
   const [toast, setToast] = useState("");
   const [form, setForm] = useState({ title: "", desc: "", category: CATEGORIES[0], location: "", imageUrl: "", want: "" });
   const chatEndRef = useRef(null);
@@ -319,11 +339,55 @@ export default function App() {
     setView("chat");
   }
 
+  function handlePickImage(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast("اختر ملف صورة فقط");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("حجم الصورة أكبر من 5 ميجا");
+      return;
+    }
+    setChatImage(file);
+    setChatImagePreview(URL.createObjectURL(file));
+  }
+
+  function handleClearImage() {
+    setChatImage(null);
+    setChatImagePreview("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   async function handleSend() {
-    if (!chatText.trim() || !activeConvId) return;
+    if ((!chatText.trim() && !chatImage) || !activeConvId) return;
     const text = chatText.trim();
+    let imageUrl = null;
+
+    if (chatImage) {
+      setUploadingImage(true);
+      const ext = chatImage.name.split(".").pop();
+      const path = `${activeConvId}/${uid()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("chat-images").upload(path, chatImage);
+      if (uploadError) {
+        showToast("تعذر رفع الصورة: " + uploadError.message);
+        setUploadingImage(false);
+        return;
+      }
+      const { data: publicUrlData } = supabase.storage.from("chat-images").getPublicUrl(path);
+      imageUrl = publicUrlData.publicUrl;
+      setUploadingImage(false);
+    }
+
     setChatText("");
-    await supabase.from("messages").insert({ conversation_id: activeConvId, sender_id: profile.id, text });
+    handleClearImage();
+    await supabase.from("messages").insert({
+      conversation_id: activeConvId,
+      sender_id: profile.id,
+      text: text || null,
+      image_url: imageUrl,
+    });
     await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", activeConvId);
   }
 
@@ -431,26 +495,59 @@ export default function App() {
       <div className="max-w-3xl mx-auto px-4">
         {view === "feed" && (
           <div className="rise">
-            <HeroCover compact />
-            <div className="flex items-center gap-2 mt-4 mb-3">
-              <div className="flex-1 flex items-center gap-2 bg-white rounded-xl px-3 py-2" style={{ border: "1px solid #ddd6c2" }}>
-                <Search size={17} color="#8a836c" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث عن غرض..." className="flex-1 outline-none bg-transparent text-sm" />
+            {/* شريط بحث بارز على طراز أولكس */}
+            <div className="mt-4 flex items-center gap-2">
+              <div className="flex-1 flex items-center gap-2 bg-white rounded-xl px-3 py-2.5 shadow-sm" style={{ border: "1px solid #ddd6c2" }}>
+                <Search size={18} color="#8a836c" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث عن غرض تحتاجه..." className="flex-1 outline-none bg-transparent text-sm" />
               </div>
-              <button onClick={() => setView("add")} className="flex items-center gap-1 px-3 py-2 rounded-xl text-white text-sm font-bold shrink-0" style={{ background: "#D9A441" }}>
-                <Plus size={17} /> أضف
+              <div className="flex items-center gap-1 bg-white rounded-xl px-2.5 py-2.5 shadow-sm shrink-0" style={{ border: "1px solid #ddd6c2" }}>
+                <MapPin size={16} color="#8a836c" />
+                <input value={locFilter} onChange={(e) => setLocFilter(e.target.value)} placeholder="المدينة" className="outline-none bg-transparent w-16 text-sm" />
+              </div>
+            </div>
+
+            {/* شبكة الفئات بأيقونات دائرية */}
+            <div className="mt-4">
+              <div className="grid grid-cols-4 gap-y-3 text-center">
+                {CATEGORIES.map((c) => {
+                  const CatIcon = CATEGORY_ICONS[c];
+                  const active = catFilter === c;
+                  return (
+                    <button key={c} onClick={() => setCatFilter(active ? "" : c)} className="flex flex-col items-center gap-1">
+                      <span
+                        className="w-12 h-12 rounded-full flex items-center justify-center transition"
+                        style={{ background: active ? "#1E4B43" : "#FBF3DE", border: active ? "none" : "1px solid #ecdfb8" }}
+                      >
+                        <CatIcon size={20} color={active ? "#fff" : "#a8791f"} />
+                      </span>
+                      <span className="text-[11px] leading-tight" style={{ color: active ? "#1E4B43" : "#5b5647", fontWeight: active ? 700 : 500 }}>
+                        {c}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {catFilter && (
+                <button onClick={() => setCatFilter("")} className="mt-3 text-xs font-bold flex items-center gap-1" style={{ color: "#B4483A" }}>
+                  <XIcon size={12} /> إلغاء تصفية "{catFilter}"
+                </button>
+              )}
+            </div>
+
+            <HeroCover compact />
+
+            {/* عنوان قسم الإعلانات + زر الإضافة */}
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-bold text-base" style={{ color: "#24211A" }}>
+                {catFilter ? `أغراض بفئة ${catFilter}` : "أحدث الإعلانات"}
+                <span className="font-normal text-sm mr-1" style={{ color: "#8a836c" }}>({filtered.length})</span>
+              </h2>
+              <button onClick={() => setView("add")} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-white text-sm font-bold shrink-0" style={{ background: "#D9A441" }}>
+                <Plus size={16} /> أضف
               </button>
             </div>
-            <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-              <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm shrink-0" style={{ border: "1px solid #ddd6c2", background: "#fff" }}>
-                <option value="">كل الفئات</option>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm shrink-0" style={{ border: "1px solid #ddd6c2", background: "#fff" }}>
-                <MapPin size={14} color="#8a836c" />
-                <input value={locFilter} onChange={(e) => setLocFilter(e.target.value)} placeholder="المدينة" className="outline-none bg-transparent w-20" />
-              </div>
-            </div>
+
             {filtered.length === 0 && (
               <div className="text-center py-16" style={{ color: "#8a836c" }}>
                 <Package size={36} className="mx-auto mb-2" />
@@ -523,16 +620,41 @@ export default function App() {
               {messages.length === 0 && <p className="text-center text-sm py-8" style={{ color: "#8a836c" }}>ابدأ التفاوض حول التبادل الآن.</p>}
               {messages.map((m) => (
                 <div key={m.id} className={`flex ${m.sender_id === profile.id ? "justify-start" : "justify-end"}`}>
-                  <div className="px-3 py-2 rounded-2xl text-sm max-w-[75%]" style={{ background: m.sender_id === profile.id ? "#1E4B43" : "#EDEAE0", color: m.sender_id === profile.id ? "#fff" : "#24211A" }}>
-                    {m.text}
+                  <div
+                    className="rounded-2xl text-sm max-w-[75%] overflow-hidden"
+                    style={{ background: m.sender_id === profile.id ? "#1E4B43" : "#EDEAE0", color: m.sender_id === profile.id ? "#fff" : "#24211A" }}
+                  >
+                    {m.image_url && (
+                      <img
+                        src={m.image_url}
+                        alt="صورة مرسلة"
+                        className="w-full max-h-56 object-cover cursor-pointer"
+                        onClick={() => window.open(m.image_url, "_blank")}
+                      />
+                    )}
+                    {m.text && <div className="px-3 py-2">{m.text}</div>}
                   </div>
                 </div>
               ))}
               <div ref={chatEndRef} />
             </div>
+            {chatImagePreview && (
+              <div className="relative inline-block mt-2 w-20">
+                <img src={chatImagePreview} alt="معاينة" className="w-20 h-20 object-cover rounded-lg" style={{ border: "1px solid #ddd6c2" }} />
+                <button onClick={handleClearImage} className="absolute -top-2 -left-2 rounded-full p-1" style={{ background: "#B4483A" }}>
+                  <XIcon size={12} color="#fff" />
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-2 mt-2">
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePickImage} className="hidden" />
+              <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-lg shrink-0" style={{ background: "#EDEAE0", border: "1px solid #ddd6c2" }}>
+                <ImageIcon size={18} color="#5b5647" />
+              </button>
               <input value={chatText} onChange={(e) => setChatText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} placeholder="اكتب رسالتك..." className="flex-1 input" />
-              <button onClick={handleSend} className="p-2.5 rounded-lg text-white" style={{ background: "#D9A441" }}><Send size={18} /></button>
+              <button onClick={handleSend} disabled={uploadingImage} className="p-2.5 rounded-lg text-white disabled:opacity-50" style={{ background: "#D9A441" }}>
+                <Send size={18} />
+              </button>
             </div>
           </div>
         )}
