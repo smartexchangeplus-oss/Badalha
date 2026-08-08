@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Repeat, Search, MapPin, MessageCircle, Plus, LogOut, Send, Tag,
   Package, Trash2, ArrowRight, Shirt, BookOpen, Gamepad2, Sofa, Image as ImageIcon, X as XIcon,
-  Smartphone, Dumbbell, Wrench, LayoutGrid,
+  Smartphone, Dumbbell, Wrench, LayoutGrid, UserRound, Home, Languages,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -177,6 +177,31 @@ export default function App() {
   const fileInputRef = useRef(null);
   const [toast, setToast] = useState("");
   const [form, setForm] = useState({ title: "", desc: "", category: CATEGORIES[0], location: "", imageUrl: "", want: "" });
+  const [productImage, setProductImage] = useState(null);
+  const [productImagePreview, setProductImagePreview] = useState("");
+  const [uploadingProductImage, setUploadingProductImage] = useState(false);
+  const productFileInputRef = useRef(null);
+
+  function handlePickProductImage(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast("اختر ملف صورة فقط");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("حجم الصورة أكبر من 5 ميجا");
+      return;
+    }
+    setProductImage(file);
+    setProductImagePreview(URL.createObjectURL(file));
+  }
+
+  function handleClearProductImage() {
+    setProductImage(null);
+    setProductImagePreview("");
+    if (productFileInputRef.current) productFileInputRef.current.value = "";
+  }
   const chatEndRef = useRef(null);
 
   function showToast(msg) {
@@ -302,17 +327,35 @@ export default function App() {
   async function handleAddProduct(e) {
     e.preventDefault();
     if (!form.title.trim() || !form.desc.trim()) return;
+
+    let imageUrl = form.imageUrl.trim() || null;
+    if (productImage) {
+      setUploadingProductImage(true);
+      const ext = productImage.name.split(".").pop();
+      const path = `${profile.id}/${uid()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("product-images").upload(path, productImage);
+      if (uploadError) {
+        showToast("تعذر رفع الصورة: " + uploadError.message);
+        setUploadingProductImage(false);
+        return;
+      }
+      const { data: publicUrlData } = supabase.storage.from("product-images").getPublicUrl(path);
+      imageUrl = publicUrlData.publicUrl;
+      setUploadingProductImage(false);
+    }
+
     const { error } = await supabase.from("products").insert({
       owner_id: profile.id,
       title: form.title.trim(),
       description: form.desc.trim(),
       category: form.category,
       location: form.location.trim() || profile.city,
-      image_url: form.imageUrl.trim() || null,
+      image_url: imageUrl,
       want_in_exchange: form.want.trim() || "مفتوح للعروض",
     });
     if (error) { showToast("صار خطأ: " + error.message); return; }
     setForm({ title: "", desc: "", category: CATEGORIES[0], location: "", imageUrl: "", want: "" });
+    handleClearProductImage();
     setView("feed");
     showToast("تمت إضافة المنتج للسوق");
   }
@@ -470,19 +513,14 @@ export default function App() {
 
   // ---------- التطبيق بعد الدخول ----------
   return (
-    <div dir="rtl" style={{ background: "#EDEAE0", minHeight: "100vh" }} className="pb-10">
+    <div dir="rtl" style={{ background: "#EDEAE0", minHeight: "100vh" }} className="pb-24">
       <style>{FONT_STYLE}</style>
 
       <div className="sticky top-0 z-20" style={{ background: "#1E4B43" }}>
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-center">
           <button onClick={() => setView("feed")} className="font-display text-2xl text-white flex items-center gap-1">
             بدّلها <span style={{ color: "#D9A441" }}>⇄</span>
           </button>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setView("messages")} className="p-2 rounded-full text-white/90 hover:bg-white/10" title="الرسائل"><MessageCircle size={20} /></button>
-            <button onClick={() => setView("mine")} className="p-2 rounded-full text-white/90 hover:bg-white/10" title="منتجاتي"><Package size={20} /></button>
-            <button onClick={handleLogout} className="p-2 rounded-full text-white/90 hover:bg-white/10" title="خروج"><LogOut size={19} /></button>
-          </div>
         </div>
       </div>
 
@@ -495,6 +533,17 @@ export default function App() {
       <div className="max-w-3xl mx-auto px-4">
         {view === "feed" && (
           <div className="rise">
+            {/* مكان صورة الغلاف — بمجرد ما تحط ملف cover-banner.jpg بمجلد public تظهر تلقائيًا */}
+            <div className="mt-4 rounded-2xl overflow-hidden">
+              <img
+                src="/cover-banner.png"
+                alt="بدّلها"
+                className="w-full object-cover"
+                style={{ maxHeight: 160 }}
+                onError={(e) => (e.target.parentElement.style.display = "none")}
+              />
+            </div>
+
             {/* شريط بحث بارز على طراز أولكس */}
             <div className="mt-4 flex items-center gap-2">
               <div className="flex-1 flex items-center gap-2 bg-white rounded-xl px-3 py-2.5 shadow-sm" style={{ border: "1px solid #ddd6c2" }}>
@@ -507,33 +556,32 @@ export default function App() {
               </div>
             </div>
 
-            {/* شبكة الفئات بأيقونات دائرية */}
-            <div className="mt-4">
-              <div className="grid grid-cols-4 gap-y-3 text-center">
-                {CATEGORIES.map((c) => {
-                  const CatIcon = CATEGORY_ICONS[c];
-                  const active = catFilter === c;
-                  return (
-                    <button key={c} onClick={() => setCatFilter(active ? "" : c)} className="flex flex-col items-center gap-1">
-                      <span
-                        className="w-12 h-12 rounded-full flex items-center justify-center transition"
-                        style={{ background: active ? "#1E4B43" : "#FBF3DE", border: active ? "none" : "1px solid #ecdfb8" }}
-                      >
-                        <CatIcon size={20} color={active ? "#fff" : "#a8791f"} />
-                      </span>
-                      <span className="text-[11px] leading-tight" style={{ color: active ? "#1E4B43" : "#5b5647", fontWeight: active ? 700 : 500 }}>
-                        {c}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {catFilter && (
-                <button onClick={() => setCatFilter("")} className="mt-3 text-xs font-bold flex items-center gap-1" style={{ color: "#B4483A" }}>
-                  <XIcon size={12} /> إلغاء تصفية "{catFilter}"
-                </button>
-              )}
+            {/* شبكة الفئات بمربعات على طراز أولكس */}
+            <h2 className="font-bold text-lg mt-5 mb-3" style={{ color: "#24211A" }}>استكشف سوق بدّلها</h2>
+            <div className="grid grid-cols-4 gap-3">
+              {CATEGORIES.map((c) => {
+                const CatIcon = CATEGORY_ICONS[c];
+                const active = catFilter === c;
+                return (
+                  <button key={c} onClick={() => setCatFilter(active ? "" : c)} className="flex flex-col items-center gap-1.5">
+                    <span
+                      className="w-full aspect-square rounded-2xl flex items-center justify-center transition"
+                      style={{ background: active ? "#1E4B43" : "#FBF3DE", border: active ? "none" : "1px solid #ecdfb8" }}
+                    >
+                      <CatIcon size={24} color={active ? "#fff" : "#a8791f"} />
+                    </span>
+                    <span className="text-[11px] leading-tight" style={{ color: active ? "#1E4B43" : "#5b5647", fontWeight: active ? 700 : 500 }}>
+                      {c}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+            {catFilter && (
+              <button onClick={() => setCatFilter("")} className="mt-3 text-xs font-bold flex items-center gap-1" style={{ color: "#B4483A" }}>
+                <XIcon size={12} /> إلغاء تصفية "{catFilter}"
+              </button>
+            )}
 
             <HeroCover compact />
 
@@ -562,7 +610,7 @@ export default function App() {
 
         {view === "mine" && (
           <div className="rise mt-4">
-            <BackBar title="منتجاتي" onBack={() => setView("feed")} />
+            <BackBar title="إعلاناتي" onBack={() => setView("feed")} />
             <div className="grid sm:grid-cols-2 gap-4 mt-3">
               {products.filter((p) => p.owner_id === profile.id).length === 0 && (
                 <p className="col-span-2 text-center py-10" style={{ color: "#8a836c" }}>لم تضف أي غرض بعد.</p>
@@ -588,9 +636,26 @@ export default function App() {
                 </Field>
                 <Field label="المدينة"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder={profile.city} className="input" /></Field>
               </div>
-              <Field label="رابط صورة (اختياري)"><input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." className="input" /></Field>
+              <Field label="صورة الغرض">
+                <input ref={productFileInputRef} type="file" accept="image/*" onChange={handlePickProductImage} className="hidden" />
+                {productImagePreview ? (
+                  <div className="relative inline-block">
+                    <img src={productImagePreview} alt="معاينة" className="w-28 h-28 object-cover rounded-xl" style={{ border: "1px solid #ddd6c2" }} />
+                    <button type="button" onClick={handleClearProductImage} className="absolute -top-2 -left-2 rounded-full p-1" style={{ background: "#B4483A" }}>
+                      <XIcon size={12} color="#fff" />
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => productFileInputRef.current?.click()} className="w-28 h-28 rounded-xl flex flex-col items-center justify-center gap-1" style={{ background: "#FAF8F1", border: "1px dashed #ddd6c2" }}>
+                    <ImageIcon size={20} color="#8a836c" />
+                    <span className="text-[10px]" style={{ color: "#8a836c" }}>ارفع صورة</span>
+                  </button>
+                )}
+              </Field>
               <Field label="المطلوب مقابله"><input value={form.want} onChange={(e) => setForm({ ...form, want: e.target.value })} placeholder="مثال: أي كتاب رواية" className="input" /></Field>
-              <button type="submit" className="w-full py-2.5 rounded-lg font-bold text-white" style={{ background: "#1E4B43" }}>نشر الغرض</button>
+              <button type="submit" disabled={uploadingProductImage} className="w-full py-2.5 rounded-lg font-bold text-white disabled:opacity-50" style={{ background: "#1E4B43" }}>
+                {uploadingProductImage ? "جارٍ رفع الصورة..." : "نشر الغرض"}
+              </button>
             </form>
           </div>
         )}
@@ -658,7 +723,81 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {view === "account" && (
+          <div className="rise mt-4">
+            <BackBar title="الحساب" onBack={() => setView("feed")} />
+            <div className="bg-white rounded-2xl p-4 mt-3 flex items-center gap-3" style={{ border: "1px solid #ddd6c2" }}>
+              <div className="w-12 h-12 rounded-full flex items-center justify-center font-display text-xl text-white" style={{ background: "#1E4B43" }}>
+                {profile.name?.[0] || "؟"}
+              </div>
+              <div>
+                <p className="font-bold" style={{ color: "#24211A" }}>{profile.name}</p>
+                <p className="text-xs" style={{ color: "#8a836c" }}>{profile.city}</p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl mt-3 overflow-hidden" style={{ border: "1px solid #ddd6c2" }}>
+              <a href="mailto:support@badalha.com" className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: "1px solid #f0ead8" }}>
+                <ArrowLeft2 />
+                <div className="text-right">
+                  <p className="font-bold text-sm" style={{ color: "#24211A" }}>المساعدة والدعم</p>
+                  <p className="text-xs" style={{ color: "#8a836c" }}>مركز المساعدة والشروط</p>
+                </div>
+              </a>
+              <a href="mailto:support@badalha.com" className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: "1px solid #f0ead8" }}>
+                <ArrowLeft2 />
+                <div className="text-right">
+                  <p className="font-bold text-sm" style={{ color: "#24211A" }}>تواصل معنا</p>
+                  <p className="text-xs" style={{ color: "#8a836c" }}>راسلنا لأي استفسار أو مشكلة</p>
+                </div>
+              </a>
+              <div className="flex items-center justify-between px-4 py-3.5">
+                <Languages size={18} color="#8a836c" />
+                <div className="text-right">
+                  <p className="font-bold text-sm" style={{ color: "#24211A" }}>العربية</p>
+                  <p className="text-xs" style={{ color: "#8a836c" }}>تغيير اللغة (قريبًا)</p>
+                </div>
+              </div>
+            </div>
+
+            <button onClick={handleLogout} className="w-full mt-4 py-3 rounded-xl font-bold text-white" style={{ background: "#B4483A" }}>
+              تسجيل الخروج
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* شريط التنقل السفلي */}
+      <div className="fixed bottom-0 inset-x-0 z-30 bg-white" style={{ borderTop: "1px solid #ddd6c2" }}>
+        <div className="max-w-3xl mx-auto grid grid-cols-5 items-end">
+          <BottomNavItem icon={UserRound} label="الحساب" active={view === "account"} onClick={() => setView("account")} />
+          <BottomNavItem icon={LayoutGrid} label="إعلاناتي" active={view === "mine"} onClick={() => setView("mine")} />
+          <button onClick={() => setView("add")} className="flex flex-col items-center pb-1.5">
+            <span className="w-12 h-12 rounded-full flex items-center justify-center -mt-5 shadow-lg" style={{ background: "#D9A441", border: "3px solid #fff" }}>
+              <Plus size={22} color="#fff" />
+            </span>
+            <span className="text-[11px] mt-0.5 font-bold" style={{ color: "#5b5647" }}>أضف</span>
+          </button>
+          <BottomNavItem icon={MessageCircle} label="المحادثة" active={view === "messages" || view === "chat"} onClick={() => setView("messages")} />
+          <BottomNavItem icon={Home} label="الرئيسية" active={view === "feed"} onClick={() => setView("feed")} />
+        </div>
       </div>
     </div>
+  );
+}
+
+function ArrowLeft2() {
+  return <ArrowRight size={16} color="#c9c2ac" style={{ transform: "scaleX(-1)" }} />;
+}
+
+function BottomNavItem({ icon: Icon, label, active, onClick }) {
+  return (
+    <button onClick={onClick} className="flex flex-col items-center gap-0.5 py-2.5">
+      <Icon size={20} color={active ? "#1E4B43" : "#a8a293"} />
+      <span className="text-[11px]" style={{ color: active ? "#1E4B43" : "#a8a293", fontWeight: active ? 700 : 500 }}>
+        {label}
+      </span>
+    </button>
   );
 }
