@@ -536,7 +536,7 @@ export default function App() {
             {/* مكان صورة الغلاف — بمجرد ما تحط ملف cover-banner.jpg بمجلد public تظهر تلقائيًا */}
             <div className="mt-4 rounded-2xl overflow-hidden">
               <img
-                src="/cover-banner.png"
+                src="/market-cover.png"
                 alt="بدّلها"
                 className="w-full object-cover"
                 style={{ maxHeight: 160 }}
