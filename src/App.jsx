@@ -65,7 +65,9 @@ function IconBubble({ color, children }) {
     </div>
   );
 }
-function HeroCover({ compact }) {
+function <div className="mt-4 rounded-2xl overflow-hidden">
+  <img src="/market-hero.png" alt="بدّلها" className="w-full object-cover" style={{ maxHeight: 160 }} />
+</div>
   const size = compact ? 92 : 148;
   return (
     <div className="relative flex items-center justify-center mx-auto" style={{ width: "100%", maxWidth: compact ? 420 : 340, height: compact ? 110 : 220 }}>
