@@ -65,9 +65,7 @@ function IconBubble({ color, children }) {
     </div>
   );
 }
-function <div className="mt-4 rounded-2xl overflow-hidden">
-  <img src="/market-hero.png" alt="بدّلها" className="w-full object-cover" style={{ maxHeight: 160 }} />
-</div>
+function HeroCover({ compact }) {
   const size = compact ? 92 : 148;
   return (
     <div className="relative flex items-center justify-center mx-auto" style={{ width: "100%", maxWidth: compact ? 420 : 340, height: compact ? 110 : 220 }}>
@@ -211,6 +209,15 @@ export default function App() {
     setTimeout(() => setToast(""), 2200);
   }
 
+  function requireAuth(target) {
+    if (!profile) {
+      showToast("سجل الدخول أولًا من زر الحساب");
+      setView("account");
+      return;
+    }
+    setView(target);
+  }
+
   // --- تتبع جلسة المصادقة ---
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -251,18 +258,22 @@ export default function App() {
   }, [profile]);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!ready) return;
     fetchProducts();
-    fetchConversations();
-
-    // تحديث لحظي: منتج جديد يظهر مباشرة للجميع
     const productsChannel = supabase
       .channel("products-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, fetchProducts)
       .subscribe();
-
     return () => supabase.removeChannel(productsChannel);
-  }, [profile, fetchProducts, fetchConversations]);
+  }, [ready, fetchProducts]);
+
+  useEffect(() => {
+    if (!profile) {
+      setConversations([]);
+      return;
+    }
+    fetchConversations();
+  }, [profile, fetchConversations]);
 
   // --- رسائل المحادثة النشطة + الاستماع اللحظي ---
   useEffect(() => {
@@ -328,6 +339,7 @@ export default function App() {
   // --- المنتجات ---
   async function handleAddProduct(e) {
     e.preventDefault();
+    if (!profile) { showToast("سجل الدخول أولًا"); setView("account"); return; }
     if (!form.title.trim() || !form.desc.trim()) return;
 
     let imageUrl = form.imageUrl.trim() || null;
@@ -363,12 +375,14 @@ export default function App() {
   }
 
   async function handleDeleteProduct(id) {
+    if (!profile) { showToast("سجل الدخول أولًا"); setView("account"); return; }
     const { error } = await supabase.from("products").delete().eq("id", id);
     if (!error) showToast("تم حذف المنتج");
   }
 
   // --- المحادثات ---
   async function handleContact(product) {
+    if (!profile) { showToast("سجل الدخول أولًا"); setView("account"); return; }
     let conv = conversations.find((c) => c.product_id === product.id);
     if (!conv) {
       const { data, error } = await supabase
@@ -455,74 +469,17 @@ export default function App() {
     );
   }
 
-  // ---------- شاشة المصادقة الحقيقية ----------
-  if (!session || !profile) {
-    return (
-      <div dir="rtl" style={{ background: "#EDEAE0", minHeight: "100vh" }} className="flex items-center justify-center p-6">
-        <style>{FONT_STYLE}</style>
-        <div className="rise w-full max-w-sm">
-          <HeroCover />
-          <div className="text-center mb-6">
-            <div className="font-display text-5xl mb-2" style={{ color: "#1E4B43" }}>
-              بدّلها <span style={{ color: "#D9A441" }}>⇄</span>
-            </div>
-            <p className="text-sm" style={{ color: "#5b5647" }}>سوق مجاني لتبادل الأغراض المستعملة</p>
-          </div>
-          <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ border: "1px solid #ddd6c2" }}>
-            <div className="flex mb-4 rounded-lg overflow-hidden" style={{ border: "1px solid #ddd6c2" }}>
-              <button
-                onClick={() => setAuthMode("signin")}
-                className="flex-1 py-2 text-sm font-bold"
-                style={{ background: authMode === "signin" ? "#1E4B43" : "#fff", color: authMode === "signin" ? "#fff" : "#24211A" }}
-              >
-                تسجيل الدخول
-              </button>
-              <button
-                onClick={() => setAuthMode("signup")}
-                className="flex-1 py-2 text-sm font-bold"
-                style={{ background: authMode === "signup" ? "#1E4B43" : "#fff", color: authMode === "signup" ? "#fff" : "#24211A" }}
-              >
-                حساب جديد
-              </button>
-            </div>
-            <form onSubmit={handleAuthSubmit} className="space-y-3">
-              {authMode === "signup" && (
-                <>
-                  <Field label="اسمك">
-                    <input required value={authForm.name} onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })} className="input" />
-                  </Field>
-                  <Field label="مدينتك">
-                    <input required value={authForm.city} onChange={(e) => setAuthForm({ ...authForm, city: e.target.value })} className="input" />
-                  </Field>
-                </>
-              )}
-              <Field label="البريد الإلكتروني">
-                <input required type="email" value={authForm.email} onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })} className="input" />
-              </Field>
-              <Field label="كلمة المرور">
-                <input required type="password" minLength={6} value={authForm.password} onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })} className="input" />
-              </Field>
-              {authError && <p className="text-xs" style={{ color: "#B4483A" }}>{authError}</p>}
-              <button disabled={authLoading} type="submit" className="w-full py-2.5 rounded-lg font-bold text-white disabled:opacity-50" style={{ background: "#1E4B43" }}>
-                {authLoading ? "..." : authMode === "signup" ? "إنشاء الحساب" : "دخول"}
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // ---------- التطبيق بعد الدخول ----------
   return (
     <div dir="rtl" style={{ background: "#EDEAE0", minHeight: "100vh" }} className="pb-24">
       <style>{FONT_STYLE}</style>
 
       <div className="sticky top-0 z-20" style={{ background: "#1E4B43" }}>
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-center">
-          <button onClick={() => setView("feed")} className="font-display text-2xl text-white flex items-center gap-1">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-center gap-2">
+          <button onClick={() => setView("feed")} className="font-display text-4xl text-white flex items-center gap-2">
             بدّلها <span style={{ color: "#D9A441" }}>⇄</span>
           </button>
+          <span className="text-xs text-white/70">قايض بكل سهولة</span>
         </div>
       </div>
 
@@ -535,9 +492,18 @@ export default function App() {
       <div className="max-w-3xl mx-auto px-4">
         {view === "feed" && (
           <div className="rise">
-<HeroCover compact />
+            {/* صورة الغلاف */}
+            <div className="mt-4 rounded-2xl overflow-hidden">
+              <img
+                src="/market-hero.png"
+                alt="بدّلها"
+                className="w-full object-cover"
+                style={{ maxHeight: 180 }}
+              />
+            </div>
+
             {/* شريط بحث بارز على طراز أولكس */}
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-8 flex items-center gap-2">
               <div className="flex-1 flex items-center gap-2 bg-white rounded-xl px-3 py-2.5 shadow-sm" style={{ border: "1px solid #ddd6c2" }}>
                 <Search size={18} color="#8a836c" />
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث عن غرض تحتاجه..." className="flex-1 outline-none bg-transparent text-sm" />
@@ -550,19 +516,19 @@ export default function App() {
 
             {/* شبكة الفئات بمربعات على طراز أولكس */}
             <h2 className="font-bold text-lg mt-5 mb-3" style={{ color: "#24211A" }}>استكشف سوق بدّلها</h2>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 gap-2">
               {CATEGORIES.map((c) => {
                 const CatIcon = CATEGORY_ICONS[c];
                 const active = catFilter === c;
                 return (
-                  <button key={c} onClick={() => setCatFilter(active ? "" : c)} className="flex flex-col items-center gap-1.5">
+                  <button key={c} onClick={() => setCatFilter(active ? "" : c)} className="flex flex-col items-center gap-1">
                     <span
-                      className="w-full aspect-square rounded-2xl flex items-center justify-center transition"
+                      className="w-12 h-12 rounded-xl flex items-center justify-center transition"
                       style={{ background: active ? "#1E4B43" : "#FBF3DE", border: active ? "none" : "1px solid #ecdfb8" }}
                     >
-                      <CatIcon size={24} color={active ? "#fff" : "#a8791f"} />
+                      <CatIcon size={18} color={active ? "#fff" : "#a8791f"} />
                     </span>
-                    <span className="text-[11px] leading-tight" style={{ color: active ? "#1E4B43" : "#5b5647", fontWeight: active ? 700 : 500 }}>
+                    <span className="text-[10px] leading-tight" style={{ color: active ? "#1E4B43" : "#5b5647", fontWeight: active ? 700 : 500 }}>
                       {c}
                     </span>
                   </button>
@@ -575,10 +541,8 @@ export default function App() {
               </button>
             )}
 
-            <HeroCover compact />
-
             {/* عنوان قسم الإعلانات + زر الإضافة */}
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 mt-5">
               <h2 className="font-bold text-base" style={{ color: "#24211A" }}>
                 {catFilter ? `أغراض بفئة ${catFilter}` : "أحدث الإعلانات"}
                 <span className="font-normal text-sm mr-1" style={{ color: "#8a836c" }}>({filtered.length})</span>
@@ -595,7 +559,7 @@ export default function App() {
               </div>
             )}
             <div className="grid sm:grid-cols-2 gap-4">
-              {filtered.map((p) => <TicketCard key={p.id} product={p} myId={profile.id} onContact={handleContact} onDelete={handleDeleteProduct} />)}
+              {filtered.map((p) => <TicketCard key={p.id} product={p} myId={profile?.id} onContact={handleContact} onDelete={handleDeleteProduct} />)}
             </div>
           </div>
         )}
@@ -719,43 +683,95 @@ export default function App() {
         {view === "account" && (
           <div className="rise mt-4">
             <BackBar title="الحساب" onBack={() => setView("feed")} />
-            <div className="bg-white rounded-2xl p-4 mt-3 flex items-center gap-3" style={{ border: "1px solid #ddd6c2" }}>
-              <div className="w-12 h-12 rounded-full flex items-center justify-center font-display text-xl text-white" style={{ background: "#1E4B43" }}>
-                {profile.name?.[0] || "؟"}
-              </div>
-              <div>
-                <p className="font-bold" style={{ color: "#24211A" }}>{profile.name}</p>
-                <p className="text-xs" style={{ color: "#8a836c" }}>{profile.city}</p>
-              </div>
-            </div>
 
-            <div className="bg-white rounded-2xl mt-3 overflow-hidden" style={{ border: "1px solid #ddd6c2" }}>
-              <a href="mailto:support@badalha.com" className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: "1px solid #f0ead8" }}>
-                <ArrowLeft2 />
-                <div className="text-right">
-                  <p className="font-bold text-sm" style={{ color: "#24211A" }}>المساعدة والدعم</p>
-                  <p className="text-xs" style={{ color: "#8a836c" }}>مركز المساعدة والشروط</p>
+            {!profile ? (
+              <div className="mt-3">
+                <div className="text-center mb-5">
+                  <HeroCover compact />
+                  <p className="text-sm mt-2" style={{ color: "#5b5647" }}>سجّل دخولك عشان تضيف أغراض وتراسل الأعضاء</p>
                 </div>
-              </a>
-              <a href="mailto:support@badalha.com" className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: "1px solid #f0ead8" }}>
-                <ArrowLeft2 />
-                <div className="text-right">
-                  <p className="font-bold text-sm" style={{ color: "#24211A" }}>تواصل معنا</p>
-                  <p className="text-xs" style={{ color: "#8a836c" }}>راسلنا لأي استفسار أو مشكلة</p>
-                </div>
-              </a>
-              <div className="flex items-center justify-between px-4 py-3.5">
-                <Languages size={18} color="#8a836c" />
-                <div className="text-right">
-                  <p className="font-bold text-sm" style={{ color: "#24211A" }}>العربية</p>
-                  <p className="text-xs" style={{ color: "#8a836c" }}>تغيير اللغة (قريبًا)</p>
+                <div className="bg-white rounded-2xl p-6 shadow-sm" style={{ border: "1px solid #ddd6c2" }}>
+                  <div className="flex mb-4 rounded-lg overflow-hidden" style={{ border: "1px solid #ddd6c2" }}>
+                    <button
+                      onClick={() => setAuthMode("signin")}
+                      className="flex-1 py-2 text-sm font-bold"
+                      style={{ background: authMode === "signin" ? "#1E4B43" : "#fff", color: authMode === "signin" ? "#fff" : "#24211A" }}
+                    >
+                      تسجيل الدخول
+                    </button>
+                    <button
+                      onClick={() => setAuthMode("signup")}
+                      className="flex-1 py-2 text-sm font-bold"
+                      style={{ background: authMode === "signup" ? "#1E4B43" : "#fff", color: authMode === "signup" ? "#fff" : "#24211A" }}
+                    >
+                      حساب جديد
+                    </button>
+                  </div>
+                  <form onSubmit={handleAuthSubmit} className="space-y-3">
+                    {authMode === "signup" && (
+                      <>
+                        <Field label="اسمك">
+                          <input required value={authForm.name} onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })} className="input" />
+                        </Field>
+                        <Field label="مدينتك">
+                          <input required value={authForm.city} onChange={(e) => setAuthForm({ ...authForm, city: e.target.value })} className="input" />
+                        </Field>
+                      </>
+                    )}
+                    <Field label="البريد الإلكتروني">
+                      <input required type="email" value={authForm.email} onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })} className="input" />
+                    </Field>
+                    <Field label="كلمة المرور">
+                      <input required type="password" minLength={6} value={authForm.password} onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })} className="input" />
+                    </Field>
+                    {authError && <p className="text-xs" style={{ color: "#B4483A" }}>{authError}</p>}
+                    <button disabled={authLoading} type="submit" className="w-full py-2.5 rounded-lg font-bold text-white disabled:opacity-50" style={{ background: "#1E4B43" }}>
+                      {authLoading ? "..." : authMode === "signup" ? "إنشاء الحساب" : "دخول"}
+                    </button>
+                  </form>
                 </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="bg-white rounded-2xl p-4 mt-3 flex items-center gap-3" style={{ border: "1px solid #ddd6c2" }}>
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center font-display text-xl text-white" style={{ background: "#1E4B43" }}>
+                    {profile.name?.[0] || "؟"}
+                  </div>
+                  <div>
+                    <p className="font-bold" style={{ color: "#24211A" }}>{profile.name}</p>
+                    <p className="text-xs" style={{ color: "#8a836c" }}>{profile.city}</p>
+                  </div>
+                </div>
 
-            <button onClick={handleLogout} className="w-full mt-4 py-3 rounded-xl font-bold text-white" style={{ background: "#B4483A" }}>
-              تسجيل الخروج
-            </button>
+                <div className="bg-white rounded-2xl mt-3 overflow-hidden" style={{ border: "1px solid #ddd6c2" }}>
+                  <a href="mailto:support@badalha.com" className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: "1px solid #f0ead8" }}>
+                    <ArrowLeft2 />
+                    <div className="text-right">
+                      <p className="font-bold text-sm" style={{ color: "#24211A" }}>المساعدة والدعم</p>
+                      <p className="text-xs" style={{ color: "#8a836c" }}>مركز المساعدة والشروط</p>
+                    </div>
+                  </a>
+                  <a href="mailto:support@badalha.com" className="flex items-center justify-between px-4 py-3.5" style={{ borderBottom: "1px solid #f0ead8" }}>
+                    <ArrowLeft2 />
+                    <div className="text-right">
+                      <p className="font-bold text-sm" style={{ color: "#24211A" }}>تواصل معنا</p>
+                      <p className="text-xs" style={{ color: "#8a836c" }}>راسلنا لأي استفسار أو مشكلة</p>
+                    </div>
+                  </a>
+                  <div className="flex items-center justify-between px-4 py-3.5">
+                    <Languages size={18} color="#8a836c" />
+                    <div className="text-right">
+                      <p className="font-bold text-sm" style={{ color: "#24211A" }}>العربية</p>
+                      <p className="text-xs" style={{ color: "#8a836c" }}>تغيير اللغة (قريبًا)</p>
+                    </div>
+                  </div>
+                </div>
+
+                <button onClick={handleLogout} className="w-full mt-4 py-3 rounded-xl font-bold text-white" style={{ background: "#B4483A" }}>
+                  تسجيل الخروج
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -763,16 +779,16 @@ export default function App() {
       {/* شريط التنقل السفلي */}
       <div className="fixed bottom-0 inset-x-0 z-30 bg-white" style={{ borderTop: "1px solid #ddd6c2" }}>
         <div className="max-w-3xl mx-auto grid grid-cols-5 items-end">
-          <BottomNavItem icon={UserRound} label="الحساب" active={view === "account"} onClick={() => setView("account")} />
-          <BottomNavItem icon={LayoutGrid} label="إعلاناتي" active={view === "mine"} onClick={() => setView("mine")} />
-          <button onClick={() => setView("add")} className="flex flex-col items-center pb-1.5">
+          <BottomNavItem icon={Home} label="الرئيسية" active={view === "feed"} onClick={() => setView("feed")} />
+          <BottomNavItem icon={MessageCircle} label="المحادثة" active={view === "messages" || view === "chat"} onClick={() => requireAuth("messages")} />
+          <button onClick={() => requireAuth("add")} className="flex flex-col items-center pb-1.5">
             <span className="w-12 h-12 rounded-full flex items-center justify-center -mt-5 shadow-lg" style={{ background: "#D9A441", border: "3px solid #fff" }}>
               <Plus size={22} color="#fff" />
             </span>
             <span className="text-[11px] mt-0.5 font-bold" style={{ color: "#5b5647" }}>أضف</span>
           </button>
-          <BottomNavItem icon={MessageCircle} label="المحادثة" active={view === "messages" || view === "chat"} onClick={() => setView("messages")} />
-          <BottomNavItem icon={Home} label="الرئيسية" active={view === "feed"} onClick={() => setView("feed")} />
+          <BottomNavItem icon={LayoutGrid} label="إعلاناتي" active={view === "mine"} onClick={() => requireAuth("mine")} />
+          <BottomNavItem icon={UserRound} label="الحساب" active={view === "account"} onClick={() => setView("account")} />
         </div>
       </div>
     </div>
