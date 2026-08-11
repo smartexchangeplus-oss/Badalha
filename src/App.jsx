@@ -533,17 +533,7 @@ export default function App() {
       <div className="max-w-3xl mx-auto px-4">
         {view === "feed" && (
           <div className="rise">
-            {/* مكان صورة الغلاف — بمجرد ما تحط ملف cover-banner.jpg بمجلد public تظهر تلقائيًا */}
-            <div className="mt-4 rounded-2xl overflow-hidden">
-              <img
-                src="/market-cover.png"
-                alt="بدّلها"
-                className="w-full object-cover"
-                style={{ maxHeight: 160 }}
-                onError={(e) => (e.target.parentElement.style.display = "none")}
-              />
-            </div>
-
+<HeroCover compact />
             {/* شريط بحث بارز على طراز أولكس */}
             <div className="mt-4 flex items-center gap-2">
               <div className="flex-1 flex items-center gap-2 bg-white rounded-xl px-3 py-2.5 shadow-sm" style={{ border: "1px solid #ddd6c2" }}>
