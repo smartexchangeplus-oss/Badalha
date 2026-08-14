@@ -578,11 +578,14 @@ export default function App() {
         {view === "feed" && (
           <div className="rise">
             {/* صورة الغلاف */}
-            <div className="mt-4 rounded-2xl overflow-hidden">
+            <div
+              className="mt-4 rounded-2xl overflow-hidden flex items-center justify-center"
+              style={{ height: 130, background: "#1E4B43" }}
+            >
               <img
                 src="/market-hero.png"
                 alt="بدّلها"
-                className="w-full h-auto object-contain"
+                className="w-full h-full object-contain"
               />
             </div>
 
@@ -931,3 +934,4 @@ function BottomNavItem({ icon: Icon, label, active, onClick }) {
     </button>
   );
 }
+
