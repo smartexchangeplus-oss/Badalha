@@ -580,10 +580,9 @@ export default function App() {
             {/* صورة الغلاف */}
             <div className="mt-4 rounded-2xl overflow-hidden">
               <img
-                src="/cover-hero.png"
+                src="/market-hero.png"
                 alt="بدّلها"
-                className="w-full object-cover"
-                style={{ maxHeight: 180 }}
+                className="w-full h-auto object-contain"
               />
             </div>
 
