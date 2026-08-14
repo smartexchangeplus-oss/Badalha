@@ -3,6 +3,7 @@ import {
   Repeat, Search, MapPin, MessageCircle, Plus, LogOut, Send, Tag,
   Package, Trash2, ArrowRight, Shirt, BookOpen, Gamepad2, Sofa, Image as ImageIcon, X as XIcon,
   Smartphone, Dumbbell, Wrench, LayoutGrid, UserRound, Home, Languages,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -18,6 +19,17 @@ const CATEGORY_ICONS = {
   "رياضة": Dumbbell,
   "أخرى": LayoutGrid,
 };
+
+const COUNTRY_CITIES = {
+  "السعودية": ["الرياض", "جدة", "الدمام", "مكة المكرمة", "المدينة المنورة", "الطائف", "أبها", "تبوك"],
+  "مصر": ["القاهرة", "الإسكندرية", "الجيزة", "أسوان", "الأقصر", "المنصورة", "طنطا"],
+  "الإمارات": ["دبي", "أبوظبي", "الشارقة", "عجمان", "رأس الخيمة", "الفجيرة"],
+  "الكويت": ["مدينة الكويت", "حولي", "الفروانية", "الأحمدي", "الجهراء"],
+  "المغرب": ["الدار البيضاء", "الرباط", "مراكش", "فاس", "طنجة", "أكادير"],
+  "الجزائر": ["الجزائر العاصمة", "وهران", "قسنطينة", "عنابة", "سطيف"],
+};
+const COUNTRIES = Object.keys(COUNTRY_CITIES);
+const ALL_CITIES = Object.values(COUNTRY_CITIES).flat();
 
 const FONT_STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=Lalezar&family=Tajawal:wght@300;400;500;700;800&display=swap');
@@ -107,17 +119,25 @@ function BackBar({ title, onBack }) {
   );
 }
 
-function TicketCard({ product, myId, onContact, onDelete }) {
+function TicketCard({ product, myId, onContact, onDelete, onOpenGallery }) {
   const isMine = product.owner_id === myId;
+  const images = product.images?.length ? product.images : (product.image_url ? [product.image_url] : []);
   return (
     <div className="rounded-2xl overflow-hidden shadow-sm bg-white relative" style={{ border: "1px solid #ddd6c2" }}>
       <div className="relative">
-        {product.image_url ? (
-          <img src={product.image_url} alt={product.title} className="w-full h-36 object-cover" onError={(e) => (e.target.style.display = "none")} />
+        {images.length > 0 ? (
+          <button type="button" onClick={() => onOpenGallery(images)} className="block w-full">
+            <img src={images[0]} alt={product.title} className="w-full h-36 object-cover" onError={(e) => (e.target.style.display = "none")} />
+          </button>
         ) : (
           <div className="w-full h-36 flex items-center justify-center" style={{ background: "#1E4B43" }}>
             <Package size={34} color="#D9A441" />
           </div>
+        )}
+        {images.length > 1 && (
+          <span className="absolute bottom-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: "rgba(0,0,0,0.55)" }}>
+            +{images.length - 1} صور
+          </span>
         )}
         <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: "#1E4B43" }}>
           <Tag size={10} className="inline ml-1" />{product.category}
@@ -152,6 +172,55 @@ function TicketCard({ product, myId, onContact, onDelete }) {
   );
 }
 
+function ImageGalleryModal({ gallery, setGallery }) {
+  if (!gallery) return null;
+  const { images, index } = gallery;
+  const go = (delta) => {
+    const next = (index + delta + images.length) % images.length;
+    setGallery({ images, index: next });
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.85)" }} onClick={() => setGallery(null)}>
+      <button onClick={() => setGallery(null)} className="absolute top-4 left-4 p-2 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }}>
+        <XIcon size={20} color="#fff" />
+      </button>
+      <img
+        src={images[index]}
+        alt="عرض الصورة"
+        className="max-w-[92%] max-h-[80%] object-contain rounded-lg"
+        onClick={(e) => e.stopPropagation()}
+      />
+      {images.length > 1 && (
+        <>
+          <button
+            onClick={(e) => { e.stopPropagation(); go(-1); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full"
+            style={{ background: "rgba(255,255,255,0.15)" }}
+          >
+            <ChevronRight size={22} color="#fff" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); go(1); }}
+            className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full"
+            style={{ background: "rgba(255,255,255,0.15)" }}
+          >
+            <ChevronLeft size={22} color="#fff" />
+          </button>
+          <div className="absolute bottom-4 flex gap-1.5">
+            {images.map((_, i) => (
+              <span
+                key={i}
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: i === index ? "#D9A441" : "rgba(255,255,255,0.4)" }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ============ التطبيق الرئيسي ============
 export default function App() {
   const [session, setSession] = useState(null);
@@ -168,7 +237,8 @@ export default function App() {
   const [view, setView] = useState("feed");
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
-  const [locFilter, setLocFilter] = useState("");
+  const [cityFilter, setCityFilter] = useState("");
+  const [countryFilter, setCountryFilter] = useState("");
   const [activeConvId, setActiveConvId] = useState(null);
   const [chatText, setChatText] = useState("");
   const [chatImage, setChatImage] = useState(null); // ملف الصورة المختارة
@@ -176,31 +246,37 @@ export default function App() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef(null);
   const [toast, setToast] = useState("");
-  const [form, setForm] = useState({ title: "", desc: "", category: CATEGORIES[0], location: "", imageUrl: "", want: "" });
-  const [productImage, setProductImage] = useState(null);
-  const [productImagePreview, setProductImagePreview] = useState("");
+  const [form, setForm] = useState({ title: "", desc: "", category: CATEGORIES[0], country: "", city: "", want: "" });
+  const [productImages, setProductImages] = useState([]); // [{file, preview}]
   const [uploadingProductImage, setUploadingProductImage] = useState(false);
   const productFileInputRef = useRef(null);
+  const [gallery, setGallery] = useState(null); // { images: [], index: 0 }
 
   function handlePickProductImage(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      showToast("اختر ملف صورة فقط");
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    if (productImages.length + files.length > 6) {
+      showToast("أقصى عدد صور 6");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      showToast("حجم الصورة أكبر من 5 ميجا");
-      return;
+    const valid = [];
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        showToast("اختر ملفات صور فقط");
+        continue;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        showToast("كل صورة أقل من 5 ميجا");
+        continue;
+      }
+      valid.push({ file, preview: URL.createObjectURL(file) });
     }
-    setProductImage(file);
-    setProductImagePreview(URL.createObjectURL(file));
+    setProductImages((prev) => [...prev, ...valid]);
+    if (productFileInputRef.current) productFileInputRef.current.value = "";
   }
 
-  function handleClearProductImage() {
-    setProductImage(null);
-    setProductImagePreview("");
-    if (productFileInputRef.current) productFileInputRef.current.value = "";
+  function handleRemoveProductImage(index) {
+    setProductImages((prev) => prev.filter((_, i) => i !== index));
   }
   const chatEndRef = useRef(null);
 
@@ -340,21 +416,26 @@ export default function App() {
   async function handleAddProduct(e) {
     e.preventDefault();
     if (!profile) { showToast("سجل الدخول أولًا"); setView("account"); return; }
-    if (!form.title.trim() || !form.desc.trim()) return;
+    if (!form.title.trim() || !form.desc.trim() || !form.country || !form.city) {
+      showToast("عبّي الاسم والوصف والدولة والمدينة");
+      return;
+    }
 
-    let imageUrl = form.imageUrl.trim() || null;
-    if (productImage) {
+    let imageUrls = [];
+    if (productImages.length) {
       setUploadingProductImage(true);
-      const ext = productImage.name.split(".").pop();
-      const path = `${profile.id}/${uid()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("product-images").upload(path, productImage);
-      if (uploadError) {
-        showToast("تعذر رفع الصورة: " + uploadError.message);
-        setUploadingProductImage(false);
-        return;
+      for (const item of productImages) {
+        const ext = item.file.name.split(".").pop();
+        const path = `${profile.id}/${uid()}.${ext}`;
+        const { error: uploadError } = await supabase.storage.from("product-images").upload(path, item.file);
+        if (uploadError) {
+          showToast("تعذر رفع صورة: " + uploadError.message);
+          setUploadingProductImage(false);
+          return;
+        }
+        const { data: publicUrlData } = supabase.storage.from("product-images").getPublicUrl(path);
+        imageUrls.push(publicUrlData.publicUrl);
       }
-      const { data: publicUrlData } = supabase.storage.from("product-images").getPublicUrl(path);
-      imageUrl = publicUrlData.publicUrl;
       setUploadingProductImage(false);
     }
 
@@ -363,13 +444,16 @@ export default function App() {
       title: form.title.trim(),
       description: form.desc.trim(),
       category: form.category,
-      location: form.location.trim() || profile.city,
-      image_url: imageUrl,
+      country: form.country,
+      city: form.city,
+      location: `${form.city}، ${form.country}`,
+      image_url: imageUrls[0] || null,
+      images: imageUrls,
       want_in_exchange: form.want.trim() || "مفتوح للعروض",
     });
     if (error) { showToast("صار خطأ: " + error.message); return; }
-    setForm({ title: "", desc: "", category: CATEGORIES[0], location: "", imageUrl: "", want: "" });
-    handleClearProductImage();
+    setForm({ title: "", desc: "", category: CATEGORIES[0], country: "", city: "", want: "" });
+    setProductImages([]);
     setView("feed");
     showToast("تمت إضافة المنتج للسوق");
   }
@@ -454,8 +538,9 @@ export default function App() {
     const q = search.trim().toLowerCase();
     const matchesQ = !q || p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
     const matchesCat = !catFilter || p.category === catFilter;
-    const matchesLoc = !locFilter.trim() || p.location.toLowerCase().includes(locFilter.trim().toLowerCase());
-    return matchesQ && matchesCat && matchesLoc;
+    const matchesCity = !cityFilter || p.city === cityFilter;
+    const matchesCountry = !countryFilter || p.country === countryFilter;
+    return matchesQ && matchesCat && matchesCity && matchesCountry;
   });
 
   const activeConv = conversations.find((c) => c.id === activeConvId);
@@ -495,7 +580,7 @@ export default function App() {
             {/* صورة الغلاف */}
             <div className="mt-4 rounded-2xl overflow-hidden">
               <img
-                src="/market-cover.png"
+                src="/market-hero.png"
                 alt="بدّلها"
                 className="w-full object-cover"
                 style={{ maxHeight: 180 }}
@@ -508,10 +593,32 @@ export default function App() {
                 <Search size={18} color="#8a836c" />
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث عن غرض تحتاجه..." className="flex-1 outline-none bg-transparent text-sm" />
               </div>
-              <div className="flex items-center gap-1 bg-white rounded-xl px-2.5 py-2.5 shadow-sm shrink-0" style={{ border: "1px solid #ddd6c2" }}>
-                <MapPin size={16} color="#8a836c" />
-                <input value={locFilter} onChange={(e) => setLocFilter(e.target.value)} placeholder="المدينة" className="outline-none bg-transparent w-16 text-sm" />
-              </div>
+            </div>
+
+            {/* قوائم اختيار الدولة والمدينة */}
+            <div className="mt-2 flex items-center gap-2">
+              <select
+                value={countryFilter}
+                onChange={(e) => { setCountryFilter(e.target.value); setCityFilter(""); }}
+                className="text-sm rounded-xl px-3 py-2 bg-white shadow-sm flex-1"
+                style={{ border: "1px solid #ddd6c2", color: "#5b5647" }}
+              >
+                <option value="">كل الدول</option>
+                {COUNTRIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <select
+                value={cityFilter}
+                onChange={(e) => setCityFilter(e.target.value)}
+                className="text-sm rounded-xl px-3 py-2 bg-white shadow-sm flex-1"
+                style={{ border: "1px solid #ddd6c2", color: "#5b5647" }}
+              >
+                <option value="">كل المدن</option>
+                {(countryFilter ? COUNTRY_CITIES[countryFilter] : ALL_CITIES).map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
 
             {/* شبكة الفئات بمربعات على طراز أولكس */}
@@ -559,7 +666,7 @@ export default function App() {
               </div>
             )}
             <div className="grid sm:grid-cols-2 gap-4">
-              {filtered.map((p) => <TicketCard key={p.id} product={p} myId={profile?.id} onContact={handleContact} onDelete={handleDeleteProduct} />)}
+              {filtered.map((p) => <TicketCard key={p.id} product={p} myId={profile?.id} onContact={handleContact} onDelete={handleDeleteProduct} onOpenGallery={(images) => setGallery({ images, index: 0 })} />)}
             </div>
           </div>
         )}
@@ -572,7 +679,7 @@ export default function App() {
                 <p className="col-span-2 text-center py-10" style={{ color: "#8a836c" }}>لم تضف أي غرض بعد.</p>
               )}
               {products.filter((p) => p.owner_id === profile.id).map((p) => (
-                <TicketCard key={p.id} product={p} myId={profile.id} onContact={handleContact} onDelete={handleDeleteProduct} />
+                <TicketCard key={p.id} product={p} myId={profile.id} onContact={handleContact} onDelete={handleDeleteProduct} onOpenGallery={(images) => setGallery({ images, index: 0 })} />
               ))}
             </div>
           </div>
@@ -590,27 +697,41 @@ export default function App() {
                     {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </Field>
-                <Field label="المدينة"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder={profile.city} className="input" /></Field>
+                <Field label="الدولة">
+                  <select required value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value, city: "" })} className="input">
+                    <option value="">اختر الدولة</option>
+                    {COUNTRIES.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </Field>
               </div>
-              <Field label="صورة الغرض">
-                <input ref={productFileInputRef} type="file" accept="image/*" onChange={handlePickProductImage} className="hidden" />
-                {productImagePreview ? (
-                  <div className="relative inline-block">
-                    <img src={productImagePreview} alt="معاينة" className="w-28 h-28 object-cover rounded-xl" style={{ border: "1px solid #ddd6c2" }} />
-                    <button type="button" onClick={handleClearProductImage} className="absolute -top-2 -left-2 rounded-full p-1" style={{ background: "#B4483A" }}>
-                      <XIcon size={12} color="#fff" />
+              <Field label="المدينة">
+                <select required value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="input" disabled={!form.country}>
+                  <option value="">{form.country ? "اختر المدينة" : "اختر الدولة أولًا"}</option>
+                  {(form.country ? COUNTRY_CITIES[form.country] : []).map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </Field>
+              <Field label={`صور الغرض (${productImages.length}/6)`}>
+                <input ref={productFileInputRef} type="file" accept="image/*" multiple onChange={handlePickProductImage} className="hidden" />
+                <div className="flex flex-wrap gap-2">
+                  {productImages.map((img, i) => (
+                    <div key={i} className="relative">
+                      <img src={img.preview} alt="معاينة" className="w-20 h-20 object-cover rounded-xl" style={{ border: "1px solid #ddd6c2" }} />
+                      <button type="button" onClick={() => handleRemoveProductImage(i)} className="absolute -top-2 -left-2 rounded-full p-1" style={{ background: "#B4483A" }}>
+                        <XIcon size={12} color="#fff" />
+                      </button>
+                    </div>
+                  ))}
+                  {productImages.length < 6 && (
+                    <button type="button" onClick={() => productFileInputRef.current?.click()} className="w-20 h-20 rounded-xl flex flex-col items-center justify-center gap-1" style={{ background: "#FAF8F1", border: "1px dashed #ddd6c2" }}>
+                      <ImageIcon size={18} color="#8a836c" />
+                      <span className="text-[10px]" style={{ color: "#8a836c" }}>أضف صورة</span>
                     </button>
-                  </div>
-                ) : (
-                  <button type="button" onClick={() => productFileInputRef.current?.click()} className="w-28 h-28 rounded-xl flex flex-col items-center justify-center gap-1" style={{ background: "#FAF8F1", border: "1px dashed #ddd6c2" }}>
-                    <ImageIcon size={20} color="#8a836c" />
-                    <span className="text-[10px]" style={{ color: "#8a836c" }}>ارفع صورة</span>
-                  </button>
-                )}
+                  )}
+                </div>
               </Field>
               <Field label="المطلوب مقابله"><input value={form.want} onChange={(e) => setForm({ ...form, want: e.target.value })} placeholder="مثال: أي كتاب رواية" className="input" /></Field>
               <button type="submit" disabled={uploadingProductImage} className="w-full py-2.5 rounded-lg font-bold text-white disabled:opacity-50" style={{ background: "#1E4B43" }}>
-                {uploadingProductImage ? "جارٍ رفع الصورة..." : "نشر الغرض"}
+                {uploadingProductImage ? "جارٍ رفع الصور..." : "نشر الغرض"}
               </button>
             </form>
           </div>
@@ -791,6 +912,8 @@ export default function App() {
           <BottomNavItem icon={UserRound} label="الحساب" active={view === "account"} onClick={() => setView("account")} />
         </div>
       </div>
+
+      <ImageGalleryModal gallery={gallery} setGallery={setGallery} />
     </div>
   );
 }
