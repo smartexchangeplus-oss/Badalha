@@ -580,7 +580,7 @@ export default function App() {
             {/* صورة الغلاف */}
             <div
               className="mt-4 rounded-2xl overflow-hidden flex items-center justify-center"
-              style={{ height: 210, }}
+              style={{ height: 220, background: "#1E4B43" }}
             >
               <img
                 src="/market-hero.png"
@@ -934,4 +934,3 @@ function BottomNavItem({ icon: Icon, label, active, onClick }) {
     </button>
   );
 }
-
